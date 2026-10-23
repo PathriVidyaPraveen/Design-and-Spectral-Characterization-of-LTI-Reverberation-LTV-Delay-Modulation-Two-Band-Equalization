@@ -6,6 +6,9 @@ D0_MS = 3.0
 DELTA_MS = 2.0
 FM_HZ = 0.5
 
+FM_SWEEP = [0.1,0.5,2.0,5.0]
+DELTA_SWEEP = [0.5,1.0,2.0,3.0]
+
 def load(path):
     x,fs = sf.read(path,always_2d=True)
     x = x.mean(axis=1)
@@ -23,3 +26,11 @@ if __name__ == "__main__":
     y = time_varying_delay(x,fs,ALPHA,D0_MS,DELTA_MS,FM_HZ)
     sf.write("original.wav",x,fs)
     sf.write("exp2_ltv.wav",y,fs)
+
+    for fm in FM_SWEEP:
+        y = time_varying_delay(x,fs,ALPHA,D0_MS,DELTA_MS,fm)
+        sf.write(f"exp2_fm_{fm}Hz.wav",y,fs)
+
+    for delta in DELTA_SWEEP:
+        y = time_varying_delay(x,fs,ALPHA,D0_MS,delta,FM_HZ)
+        sf.write(f"exp2_delta_{delta}ms.wav",y,fs)
