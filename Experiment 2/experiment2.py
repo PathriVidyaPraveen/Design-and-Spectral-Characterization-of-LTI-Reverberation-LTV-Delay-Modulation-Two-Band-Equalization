@@ -80,6 +80,49 @@ def plot_spectra(x,outputs,fs,title,path):
     plt.savefig(path,dpi=150)
     plt.close()
 
+def delay_curve(fs,n,d0_ms,delta_ms,fm_hz):
+    return d0_ms + delta_ms*np.sin(2*np.pi*fm_hz*n/fs)
+
+def plot_delay_curves(fs,sweeps,path):
+    fig,ax = plt.subplots(1,2,figsize=(12,4))
+    for a,(title,(T,curves)) in zip(ax,sweeps.items()):
+        n = np.arange(int(T*fs))
+        for label,(d0,dd,fm) in curves.items():
+            a.plot(n/fs,delay_curve(fs,n,d0,dd,fm),label=label)
+        a.set_title(title)
+        a.set_xlabel("time (s)")
+        a.set_ylabel("D(n) (ms)")
+        a.legend(loc="upper right")
+    fig.tight_layout()
+    fig.savefig(path,dpi=150)
+    plt.close(fig)
+
+def stft_mag(x,nfft=2048,hop=512):
+    w = 0.5 - 0.5*np.cos(2*np.pi*np.arange(nfft)/nfft)
+    frames = np.stack([x[s:s+nfft]*w for s in range(0,len(x)-nfft+1,hop)])
+    return np.abs(fft(frames))[:,:nfft//2+1]
+ 
+def plot_response_maps(x,outputs,fs,title,path,nfft=1024,hop=256,fmax=4000):
+    
+    X = stft_mag(x,nfft,hop)
+    t = (np.arange(X.shape[0])*hop + nfft/2)/fs
+    f = np.arange(nfft//2+1)*fs/nfft
+    keep = f <= fmax
+    fig,ax = plt.subplots(len(outputs),1,figsize=(10,2.6*len(outputs)),sharex=True)
+    for a,(label,(y,(d0,dd,fm))) in zip(ax,outputs.items()):
+        R = 20*np.log10((stft_mag(y,nfft,hop)+1e-9)/(X+1e-9))
+        a.pcolormesh(t,f[keep],R[:,keep].T,vmin=-20,vmax=8,cmap="magma",shading="auto")
+        D = delay_curve(fs,t*fs,d0,dd,fm)*1e-3
+        for k in (0,1):
+            a.plot(t,(2*k+1)/(2*D),"c--",lw=0.8)
+        a.set_ylim(0,fmax)
+        a.set_ylabel("f (Hz)")
+        a.set_title(label)
+    ax[-1].set_xlabel("time (s)")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(path,dpi=150)
+    plt.close(fig)
 if __name__ == "__main__":
     x,fs = load("../recording.wav")
     y = time_varying_delay(x,fs,ALPHA,D0_MS,DELTA_MS,FM_HZ)
@@ -104,3 +147,11 @@ if __name__ == "__main__":
     plot_spectra(x,{"LTV output":y},fs,params,"exp2_spectrum.png")
     plot_spectra(x,fm_outputs,fs,f"fm sweep (dD = {DELTA_MS} ms)","exp2_spectrum_fm_sweep.png")
     plot_spectra(x,delta_outputs,fs,f"dD sweep (fm = {FM_HZ} Hz)","exp2_spectrum_delta_sweep.png")
+    fm_params = {f"fm = {fm} Hz":(D0_MS,DELTA_MS,fm) for fm in FM_SWEEP}
+    delta_params = {f"dD = {d} ms":(D0_MS,d,FM_HZ) for d in DELTA_SWEEP}
+    plot_delay_curves(fs,{f"fm sweep (dD = {DELTA_MS} ms)":(2,fm_params),
+                          f"dD sweep (fm = {FM_HZ} Hz)":(4,delta_params)},"exp2_delay_curves.png")
+    plot_response_maps(x,{k:(fm_outputs[k],p) for k,p in fm_params.items()},fs,
+                       "|Y|/|X| (dB) over time, fm sweep","exp2_response_fm_sweep.png")
+    plot_response_maps(x,{k:(delta_outputs[k],p) for k,p in delta_params.items()},fs,
+                       "|Y|/|X| (dB) over time, dD sweep","exp2_response_delta_sweep.png")
